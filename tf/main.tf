@@ -9,7 +9,6 @@ terraform {
   }
 }
 
-
 provider "pingone" {
   client_id = var.pingone_client_id
   client_secret = var.pingone_client_secret
@@ -30,7 +29,6 @@ data "pingone_environment" "admin_environment" {
 }
 
 # Find license based on license name
-
 data "pingone_licenses" "internal" {
   organization_id = data.pingone_environment.admin_environment.organization_id
 
@@ -83,6 +81,13 @@ data "pingone_user" "admin_user" {
   username       = var.pingone_username
 }
 
+resource "pingone_population" "customers" {
+  environment_id = resource.pingone_environment.environment.id
+
+  name        = "Customers"
+  description = "Customer Identities"
+}
+
 resource "pingone_role_assignment_user" "admin_sso" {
   environment_id       = var.pingone_environment_id
   user_id              = data.pingone_user.admin_user.id
@@ -95,13 +100,6 @@ resource "pingone_role_assignment_user" "environment_admin_sso" {
   user_id              = data.pingone_user.admin_user.id
   role_id              = data.pingone_role.environment_admin.id
   scope_environment_id = resource.pingone_environment.environment.id
-}
-
-resource "pingone_population" "customers" {
-  environment_id = resource.pingone_environment.environment.id
-
-  name        = "Customers"
-  description = "Customer Identities"
 }
 
 resource "pingone_application" "worker" {
