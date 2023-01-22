@@ -9,6 +9,7 @@ terraform {
   }
 }
 
+
 provider "pingone" {
   client_id = var.pingone_client_id
   client_secret = var.pingone_client_secret
@@ -29,6 +30,7 @@ data "pingone_environment" "admin_environment" {
 }
 
 # Find license based on license name
+
 data "pingone_licenses" "internal" {
   organization_id = data.pingone_environment.admin_environment.organization_id
 
@@ -81,13 +83,6 @@ data "pingone_user" "admin_user" {
   username       = var.pingone_username
 }
 
-resource "pingone_population" "customers" {
-  environment_id = resource.pingone_environment.environment.id
-
-  name        = "Customers"
-  description = "Customer Identities"
-}
-
 resource "pingone_role_assignment_user" "admin_sso" {
   environment_id       = var.pingone_environment_id
   user_id              = data.pingone_user.admin_user.id
@@ -100,6 +95,13 @@ resource "pingone_role_assignment_user" "environment_admin_sso" {
   user_id              = data.pingone_user.admin_user.id
   role_id              = data.pingone_role.environment_admin.id
   scope_environment_id = resource.pingone_environment.environment.id
+}
+
+resource "pingone_population" "customers" {
+  environment_id = resource.pingone_environment.environment.id
+
+  name        = "Customers"
+  description = "Customer Identities"
 }
 
 resource "pingone_application" "worker" {
@@ -160,6 +162,17 @@ resource "pingone_mfa_policy" "standard" {
     enabled = true
   }
 
+}
+
+resource "pingone_notification_template_content" "email" {
+  environment_id = pingone_environment.environment.id
+  template_name  = "general"
+  locale         = "en"
+
+  email {
+    body    = "You have successfully registered!"
+    subject = "BXI Registration Complete"
+  }
 }
 
 data "davinci_connections" "all" {
@@ -223,6 +236,34 @@ resource "davinci_connection" "mfa" {
   }
 }
 
+resource "davinci_connection" "notifications" {
+  depends_on     = [data.davinci_connections.all]
+  environment_id = resource.pingone_role_assignment_user.admin_sso.scope_environment_id
+  connector_id   = "notificationsConnector"
+  name           = "PingOne Notifications"
+  properties {
+    name  = "clientId"
+    value = resource.pingone_application.worker.oidc_options[0].client_id
+  }
+  properties {
+    name  = "clientSecret"
+    value = resource.pingone_application.worker.oidc_options[0].client_secret
+  }
+  properties {
+    name  = "envId"
+    value = resource.pingone_role_assignment_user.admin_sso.scope_environment_id
+  }
+  properties {
+    name  = "region"
+    value = coalesce(
+      resource.pingone_environment.environment.region == "Europe" ? "EU" :"",
+      resource.pingone_environment.environment.region == "AsiaPacific" ? "AP" :"",
+      resource.pingone_environment.environment.region == "Canada" ? "CA" :"",
+      resource.pingone_environment.environment.region == "NorthAmerica" ? "NA" :"",
+    )
+  }
+}
+
 resource "davinci_connection" "node" {
   depends_on     = [data.davinci_connections.all]
   environment_id = resource.pingone_role_assignment_user.admin_sso.scope_environment_id
@@ -257,6 +298,10 @@ resource "davinci_flow" "bxi_registration" {
   connections {
     connection_name = resource.davinci_connection.mfa.name
     connection_id = resource.davinci_connection.mfa.id
+  }
+  connections {
+    connection_id = resource.davinci_connection.notifications.id
+    connection_name = resource.davinci_connection.notifications.name
   }
   variables {
     variable_id = resource.davinci_variable.population.id
